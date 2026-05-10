@@ -1,0 +1,286 @@
+
+<style>
+  .viva-container { padding: 1rem 0; font-family: var(--font-sans); }
+  .progress-bar { height: 4px; background: var(--color-border-tertiary); border-radius: 2px; margin-bottom: 1.5rem; }
+  .progress-fill { height: 100%; background: #378ADD; border-radius: 2px; transition: width 0.4s; }
+  .topic-badge { display: inline-block; font-size: 11px; font-weight: 500; padding: 3px 10px; border-radius: 20px; margin-bottom: 0.75rem; }
+  .topic-cnn { background: #E6F1FB; color: #0C447C; }
+  .topic-nlp { background: #E1F5EE; color: #085041; }
+  .topic-both { background: #EEEDFE; color: #3C3489; }
+  .question-card { background: var(--color-background-primary); border: 0.5px solid var(--color-border-tertiary); border-radius: var(--border-radius-lg); padding: 1.25rem 1.5rem; margin-bottom: 1rem; }
+  .question-number { font-size: 12px; color: var(--color-text-tertiary); margin-bottom: 6px; }
+  .question-text { font-size: 17px; color: var(--color-text-primary); line-height: 1.6; font-weight: 500; }
+  .hint-area { margin-top: 1rem; padding: 0.75rem 1rem; background: var(--color-background-secondary); border-radius: var(--border-radius-md); border-left: 3px solid #378ADD; display: none; }
+  .hint-text { font-size: 14px; color: var(--color-text-secondary); line-height: 1.6; }
+  .answer-area { margin-top: 1rem; padding: 0.75rem 1rem; background: var(--color-background-secondary); border-radius: var(--border-radius-md); border-left: 3px solid #1D9E75; display: none; }
+  .answer-text { font-size: 14px; color: var(--color-text-secondary); line-height: 1.6; }
+  .btn-row { display: flex; gap: 8px; margin-top: 1rem; flex-wrap: wrap; }
+  .nav-row { display: flex; justify-content: space-between; align-items: center; margin-top: 1.5rem; }
+  .counter-text { font-size: 13px; color: var(--color-text-secondary); }
+  .filter-row { display: flex; gap: 8px; margin-bottom: 1.25rem; flex-wrap: wrap; }
+  .filter-btn { font-size: 12px; padding: 4px 12px; border-radius: 20px; border: 0.5px solid var(--color-border-secondary); background: transparent; color: var(--color-text-secondary); cursor: pointer; }
+  .filter-btn.active { background: var(--color-background-info); color: var(--color-text-info); border-color: transparent; }
+  .difficulty-row { display: flex; gap: 6px; margin-bottom: 4px; }
+  .diff-dot { width: 8px; height: 8px; border-radius: 50%; }
+  .diff-easy { background: #1D9E75; }
+  .diff-medium { background: #BA7517; }
+  .diff-hard { background: #A32D2D; }
+  .diff-label { font-size: 11px; color: var(--color-text-tertiary); }
+</style>
+
+<div class="viva-container">
+  <h2 style="sr-only">Viva questions for CNN and NLP notebooks</h2>
+  <div class="filter-row" id="filters">
+    <button class="filter-btn active" onclick="setFilter('all')">All topics</button>
+    <button class="filter-btn" onclick="setFilter('cnn')">CNN notebook</button>
+    <button class="filter-btn" onclick="setFilter('nlp')">NLP notebook</button>
+    <button class="filter-btn" onclick="setFilter('both')">General / both</button>
+  </div>
+
+  <div class="progress-bar"><div class="progress-fill" id="progress"></div></div>
+
+  <div id="card-area"></div>
+
+  <div class="nav-row">
+    <button onclick="prevQ()" id="btn-prev" style="padding: 6px 18px;">← prev</button>
+    <span class="counter-text" id="counter"></span>
+    <button onclick="nextQ()" id="btn-next" style="padding: 6px 18px;">next →</button>
+  </div>
+</div>
+
+<script>
+const ALL_QUESTIONS = [
+  {
+    topic: 'cnn',
+    difficulty: 'easy',
+    q: 'What is the purpose of the MaxPooling2D layer in your Baseline CNN, and what does it do to the spatial dimensions?',
+    hint: 'Think about what happens to a 224×224 feature map after a (2,2) pool.',
+    answer: 'MaxPooling reduces spatial dimensions by taking the maximum value in each (2,2) window, halving width and height each time (224→112→56→28). This reduces computation, helps with translation invariance, and forces the network to focus on the most prominent activations.'
+  },
+  {
+    topic: 'cnn',
+    difficulty: 'easy',
+    q: 'You used he_normal as the kernel initializer throughout. Why is this preferred over random uniform or glorot_uniform for ReLU activations?',
+    hint: 'Think about how the variance of weights should scale with the number of inputs.',
+    answer: 'He initialization sets variance = 2/fan_in, specifically accounting for the fact that ReLU kills negative activations (roughly half the neurons). Glorot (Xavier) was designed for tanh/sigmoid and underestimates the needed variance for ReLU, leading to vanishing gradients in deep networks.'
+  },
+  {
+    topic: 'cnn',
+    difficulty: 'medium',
+    q: 'Your deeper CNN uses GlobalAveragePooling2D (GAP) instead of Flatten. What is the advantage of GAP, especially given your 5-block architecture?',
+    hint: 'Consider the parameter count difference and overfitting risk.',
+    answer: 'After block 5, the feature map is 7×7×512. Flattening gives 7×7×512 = 25,088 features, leading to millions of dense parameters. GAP averages each 7×7 map to a single number, giving just 512 values — drastically fewer parameters, acting as a strong structural regularizer and reducing overfitting.'
+  },
+  {
+    topic: 'cnn',
+    difficulty: 'medium',
+    q: 'Explain the two-phase ResNet50 transfer learning approach used. Why is the learning rate set so much lower in Phase 2 (1e-5) compared to Phase 1 (1e-3)?',
+    hint: 'Think about catastrophic forgetting.',
+    answer: 'Phase 1 freezes the ResNet base and trains only the custom head — high LR is safe since ImageNet weights are untouched. Phase 2 unfreezes the last 30 layers for end-to-end fine-tuning. A very low LR (1e-5) prevents catastrophic forgetting — large gradients would destroy the learned ImageNet representations that make transfer learning valuable.'
+  },
+  {
+    topic: 'cnn',
+    difficulty: 'hard',
+    q: 'Your Adam model uses label_smoothing=0.1 in the loss function, but the Baseline CNN does not. What does label smoothing do, and why might it help the deeper model specifically?',
+    hint: 'Think about overconfident predictions and calibration.',
+    answer: 'Label smoothing replaces hard targets (0,1) with soft ones (0.05, 0.95 for 4 classes). This prevents the model from becoming overconfident, improves calibration, and acts as regularization. It\'s more beneficial for the deeper model because deeper networks are more prone to memorizing training labels and outputting near-100% confidence — label smoothing penalizes this behavior.'
+  },
+  {
+    topic: 'cnn',
+    difficulty: 'medium',
+    q: 'Why did you apply class weights (e.g., glioma=1.5, notumor=0.7) rather than relying on data augmentation alone to handle class imbalance?',
+    hint: 'Consider the nature of the imbalance and what each technique actually does.',
+    answer: 'Augmentation increases diversity within a class but doesn\'t change the model\'s loss function — it still "sees" more notumor examples per epoch. Class weights directly scale the loss contribution of each sample, so misclassifying a glioma costs more than misclassifying a notumor. This is especially important for medical imaging where false negatives on tumors are clinically costly.'
+  },
+  {
+    topic: 'cnn',
+    difficulty: 'hard',
+    q: 'Your SGD model uses Nesterov momentum. How does Nesterov momentum differ from classical momentum, and why might it converge better?',
+    hint: 'Think about where the gradient is evaluated.',
+    answer: 'Classical momentum computes the gradient at the current position, then takes a step combining gradient + momentum. Nesterov first takes a step in the momentum direction, then computes the gradient at that lookahead position. This gives the optimizer a "preview" of where it\'s going, allowing it to correct overshooting earlier — resulting in faster convergence and better final performance, especially near minima.'
+  },
+  {
+    topic: 'cnn',
+    difficulty: 'easy',
+    q: 'What is SpatialDropout2D and how does it differ from regular Dropout in the context of convolutional layers?',
+    hint: 'Think about correlations between adjacent pixels in feature maps.',
+    answer: 'Regular Dropout randomly zeros individual neurons. SpatialDropout2D zeros entire feature maps (channels) at random. This is more effective for CNNs because adjacent pixels in a feature map are highly correlated — dropping individual pixels doesn\'t break that correlation. Dropping whole channels forces the network to not rely on any single feature detector.'
+  },
+  {
+    topic: 'cnn',
+    difficulty: 'medium',
+    q: 'Your ReduceLROnPlateau callback uses a lower min_lr floor for SGD (1e-6) vs Adam (1e-7). Why might this make sense given how each optimizer uses learning rate?',
+    hint: 'Think about how Adam adapts per-parameter LR vs SGD.',
+    answer: 'Adam adapts per-parameter learning rates using moment estimates, so it can still make meaningful updates at very small global LRs. SGD with a fixed global LR becomes essentially frozen at very low values since there\'s no adaptive scaling. Setting SGD\'s floor higher (1e-6) ensures it retains enough signal to keep training meaningfully.'
+  },
+  {
+    topic: 'nlp',
+    difficulty: 'easy',
+    q: 'In your tweet cleaning pipeline, you kept certain stop words like "not", "no", "never", "hate". Why is removing all stop words problematic for hate speech detection?',
+    hint: 'Think about what "not" or "never" does to the meaning of a sentence.',
+    answer: 'Standard stop word removal would delete "not", changing "I do not hate you" to "hate you" — completely inverting sentiment. For hate speech detection, negation words are critical signal bearers. Removing them would introduce noise and potentially flip labels, hurting model performance.'
+  },
+  {
+    topic: 'nlp',
+    difficulty: 'easy',
+    q: 'You used the 95th percentile of training sequence lengths as MAX_LEN rather than the maximum length. What is the rationale for this choice?',
+    hint: 'Consider outliers and computational cost.',
+    answer: 'Using the maximum length would pad all sequences to accommodate rare extreme outliers (very long tweets), wasting memory and computation. The 95th percentile captures 95% of tweets at their natural length while truncating only extreme outliers, giving a good trade-off between coverage and efficiency.'
+  },
+  {
+    topic: 'nlp',
+    difficulty: 'medium',
+    q: 'Explain why your dataset uses a class weight of ~6.6 for the hate speech class. What does this number represent mathematically?',
+    hint: 'Look at the dataset ratio: 29,720 normal vs 2,242 hate speech.',
+    answer: 'The balanced class weight formula is: total_samples / (n_classes × class_count). For hate speech: 31962 / (2 × 2242) ≈ 6.63. This means each hate speech example contributes 6.63× more to the loss than a normal example, compensating for the ~13:1 imbalance. Without this, the model could achieve ~93% accuracy by predicting "normal" for everything.'
+  },
+  {
+    topic: 'nlp',
+    difficulty: 'medium',
+    q: 'Your LSTM model uses two stacked LSTM layers with return_sequences=True on the first. What does return_sequences do, and why is it necessary for stacking LSTMs?',
+    hint: 'Think about what a single LSTM layer outputs by default.',
+    answer: 'By default, an LSTM returns only the final hidden state (shape: batch × units). Setting return_sequences=True returns the hidden state at every timestep (batch × sequence_length × units). This is required for stacking LSTMs because the second LSTM needs a sequence as input, not just a single summary vector.'
+  },
+  {
+    topic: 'nlp',
+    difficulty: 'hard',
+    q: 'You loaded the Word2Vec Google News 300 embeddings and set trainable=True. What are the trade-offs of making pretrained embeddings trainable vs freezing them?',
+    hint: 'Consider domain shift between news text and tweets, and overfitting risk.',
+    answer: 'Freezing: preserves general semantic knowledge from 100B words, avoids overfitting on small datasets, faster training. Making trainable: allows embeddings to adapt to tweet-specific vocabulary and style (slang, abbreviations), potentially better performance if data is large enough. Given the tweet domain differs significantly from Google News (casual language, hashtags), fine-tuning helps — but risks overwriting useful representations on limited data.'
+  },
+  {
+    topic: 'nlp',
+    difficulty: 'hard',
+    q: 'Your Gradio demo uses a majority vote across 3 models with tuned thresholds. What are the advantages of this ensemble approach, and what could still go wrong?',
+    hint: 'Think about model correlation and threshold calibration.',
+    answer: 'Advantages: reduces variance (one model\'s mistakes get overridden), more robust predictions, different models may capture different linguistic patterns. Risks: if all 3 models share the same biases (trained on same data, similar architectures), the ensemble amplifies those biases. Also, tuned thresholds are optimized on validation data and may not generalize — if the val set is unrepresentative, all thresholds could be miscalibrated simultaneously.'
+  },
+  {
+    topic: 'nlp',
+    difficulty: 'medium',
+    q: 'Why does a SimpleRNN suffer from the vanishing gradient problem, and how does LSTM\'s architecture address it?',
+    hint: 'Think about how gradients flow back through time steps.',
+    answer: 'In SimpleRNN, gradients are multiplied by the weight matrix at every timestep during backpropagation through time. If eigenvalues of this matrix are <1, gradients shrink exponentially over long sequences — making early timesteps receive almost no gradient signal. LSTMs use a cell state with additive updates (not multiplicative) and gates that control information flow, creating "gradient highways" that allow gradients to flow back over hundreds of timesteps without vanishing.'
+  },
+  {
+    topic: 'both',
+    difficulty: 'medium',
+    q: 'Both projects use EarlyStopping with restore_best_weights=True. What problem does this solve, and what metric did you monitor in each project?',
+    hint: 'Think about overfitting and the difference between stopping and saving.',
+    answer: 'Without restore_best_weights, training stops when patience runs out — but the final weights are from the last epoch, which may be worse than earlier epochs due to overfitting. restore_best_weights rolls back to the checkpoint with the best monitored metric. CNN: monitored val_loss (minimization). NLP: also val_loss. This ensures the returned model is the best seen during training, not just the last.'
+  },
+  {
+    topic: 'both',
+    difficulty: 'easy',
+    q: 'Both projects use an 80/20 train-test split with stratify=y. What does stratification ensure, and why is it especially important for imbalanced datasets?',
+    hint: 'Think about what could go wrong with a random split on imbalanced data.',
+    answer: 'Stratification ensures each split has the same class proportion as the original dataset. Without it, random splitting could put all rare-class examples in training (test has none) or all in test (model never learns them). For the hate speech dataset with 13:1 imbalance, a non-stratified split could put no hate speech tweets in the test set, making evaluation meaningless.'
+  },
+  {
+    topic: 'both',
+    difficulty: 'hard',
+    q: 'In your CNN comparison, what metric would you prioritize — accuracy or F1-macro — and why? How does this reasoning apply to the NLP task as well?',
+    hint: 'Think about what accuracy hides when class distributions are unequal.',
+    answer: 'F1-macro is more informative for both tasks. Accuracy can be misleading with imbalance: a model predicting "notumor" always would get ~40% accuracy on the brain tumor dataset. F1-macro computes F1 per class and averages them equally, penalizing poor performance on minority classes. For hate speech (93% normal), a model predicting all-normal achieves 93% accuracy but 0% recall on hate speech — F1 with class weighting reveals this failure immediately.'
+  },
+  {
+    topic: 'cnn',
+    difficulty: 'hard',
+    q: 'The ResNet50 base uses training=False in the feature extraction phase: rn_base(inputs, training=False). Why is this critical, particularly for BatchNormalization layers?',
+    hint: 'Think about how BatchNorm behaves differently in training vs inference mode.',
+    answer: 'BatchNormalization has two modes: training mode uses batch statistics (mean/variance of current batch) and updates its running averages; inference mode uses stored running averages. With training=True on a frozen base, BN layers would update their running statistics using the new dataset\'s batches, corrupting the ImageNet-tuned statistics. training=False keeps BN in inference mode, preserving the pretrained statistics — essential for stable feature extraction.'
+  }
+];
+
+let currentFilter = 'all';
+let filteredQ = [];
+let currentIdx = 0;
+let hintShown = {};
+let answerShown = {};
+
+function setFilter(f) {
+  currentFilter = f;
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  event.target.classList.add('active');
+  filteredQ = f === 'all' ? ALL_QUESTIONS : ALL_QUESTIONS.filter(q => q.topic === f);
+  currentIdx = 0;
+  hintShown = {};
+  answerShown = {};
+  render();
+}
+
+function render() {
+  if (!filteredQ.length) {
+    document.getElementById('card-area').innerHTML = '<p style="color:var(--color-text-secondary)">No questions for this filter.</p>';
+    return;
+  }
+  const q = filteredQ[currentIdx];
+  const n = currentIdx + 1;
+  const total = filteredQ.length;
+
+  document.getElementById('progress').style.width = (n / total * 100) + '%';
+  document.getElementById('counter').textContent = `${n} of ${total}`;
+
+  const topicLabel = {cnn: 'CNN notebook', nlp: 'NLP notebook', both: 'General / both'};
+  const topicClass = {cnn: 'topic-cnn', nlp: 'topic-nlp', both: 'topic-both'};
+  const diffColor = {easy: 'diff-easy', medium: 'diff-medium', hard: 'diff-hard'};
+  const diffLabel = {easy: 'Conceptual', medium: 'Applied', hard: 'Deep dive'};
+
+  document.getElementById('card-area').innerHTML = `
+    <div class="question-card">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+        <span class="topic-badge ${topicClass[q.topic]}">${topicLabel[q.topic]}</span>
+        <div style="display:flex; align-items:center; gap:5px;">
+          <div class="diff-dot ${diffColor[q.difficulty]}"></div>
+          <span class="diff-label">${diffLabel[q.difficulty]}</span>
+        </div>
+      </div>
+      <div class="question-number">Q${n}</div>
+      <div class="question-text">${q.q}</div>
+      <div class="btn-row">
+        <button onclick="toggleHint()" id="hint-btn">hint</button>
+        <button onclick="toggleAnswer()" id="answer-btn">show answer</button>
+        <button onclick="sendPrompt('Let me explain my answer to this viva question: ${q.q.replace(/'/g,"\\'")}')">discuss with Claude ↗</button>
+      </div>
+      <div class="hint-area" id="hint-area">
+        <div class="hint-text"><strong>Hint:</strong> ${q.hint}</div>
+      </div>
+      <div class="answer-area" id="answer-area">
+        <div class="answer-text"><strong>Model answer:</strong> ${q.answer}</div>
+      </div>
+    </div>
+  `;
+
+  if (hintShown[currentIdx]) {
+    document.getElementById('hint-area').style.display = 'block';
+    document.getElementById('hint-btn').textContent = 'hide hint';
+  }
+  if (answerShown[currentIdx]) {
+    document.getElementById('answer-area').style.display = 'block';
+    document.getElementById('answer-btn').textContent = 'hide answer';
+  }
+
+  document.getElementById('btn-prev').disabled = currentIdx === 0;
+  document.getElementById('btn-next').disabled = currentIdx === filteredQ.length - 1;
+}
+
+function toggleHint() {
+  const area = document.getElementById('hint-area');
+  const btn = document.getElementById('hint-btn');
+  hintShown[currentIdx] = !hintShown[currentIdx];
+  area.style.display = hintShown[currentIdx] ? 'block' : 'none';
+  btn.textContent = hintShown[currentIdx] ? 'hide hint' : 'hint';
+}
+function toggleAnswer() {
+  const area = document.getElementById('answer-area');
+  const btn = document.getElementById('answer-btn');
+  answerShown[currentIdx] = !answerShown[currentIdx];
+  area.style.display = answerShown[currentIdx] ? 'block' : 'none';
+  btn.textContent = answerShown[currentIdx] ? 'hide answer' : 'show answer';
+}
+function nextQ() { if (currentIdx < filteredQ.length - 1) { currentIdx++; render(); } }
+function prevQ() { if (currentIdx > 0) { currentIdx--; render(); } }
+
+filteredQ = ALL_QUESTIONS;
+render();
+</script>
